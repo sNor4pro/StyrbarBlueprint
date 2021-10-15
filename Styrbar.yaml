@@ -1,0 +1,141 @@
+blueprint:
+  name: Ikea Styrbar Remote
+  description: Control your lights with the IKEA STYRBAR remote. You can also set
+    actions for the left and right button.
+  domain: automation
+  input:
+    remote:
+      name: Remote
+      description: IKEA Styrbar remote to use
+      selector:
+        device:
+          integration: zha
+          manufacturer: IKEA of Sweden
+          entity:
+            domain: sensor
+    target_light:
+      name: Lights
+      description: The lights you want to control with the remote
+      selector:
+        target:
+          entity:
+            domain: light
+    button_left:
+      name: Left button
+      description: Action to run on left button press short
+      default: []
+      selector:
+        action: {}
+    button_right:
+      name: Right button
+      description: Action to run on right button press short
+      default: []
+      selector:
+        action: {}
+    button_left_hold:
+      name: Left button hold
+      description: Action to run on left button press long,
+        action is stopped when button is released.
+      default: []
+      selector:
+        action: {}
+    button_right_hold:
+      name: Right button hold
+      description: Action to run on right button press long,
+        action is stopped when button is released.
+      default: []
+      selector:
+        action: {}
+    brightness:
+      name: Brightness
+      description: The brightness you want your lights to be when turning them on
+      default: 100
+      selector:
+        number:
+          min: 0.0
+          max: 100.0
+          mode: slider
+          step: 1.0
+          unit_of_measurement: '%'
+    force_brightness:
+      name: Force Brightness
+      description: Force the above set brightness when turning on the lamps?
+      default: false
+      selector:
+        boolean: {}
+  source_url: https://raw.githubusercontent.com/Computerfreak14/Z2M-Styrbar-remote-blueprint/experimental-ZHA/Z2M-IKEA-STYRBAR-remote.yaml
+trigger:
+- platform: event
+  event_type: zha_event
+  event_data:
+    device_id: !input 'remote'
+action:
+- variables:
+    command: '{{ trigger.event.data.command }}'
+    dataargs: '{{ trigger.event.data.args }}'
+- choose:
+  - conditions: '{{ command == ''on'' }}'
+    sequence:
+    - choose:
+      - conditions: '{{ force_brightness }}'
+        sequence:
+        - service: light.turn_on
+          target: !input 'target_light'
+          data:
+            transition: 1
+            brightness_pct: !input 'brightness'
+      default:
+      - service: light.turn_on
+        target: !input 'target_light'
+        data:
+          transition: 1
+  - conditions: '{{ command == ''off'' }}'
+    sequence:
+    - service: light.turn_off
+      target: !input 'target_light'
+  - conditions: '{{ command == ''move'' }}'
+    sequence:
+    - repeat:
+        until: '{{ command == ''stop'' }}'
+        sequence:
+        - service: light.turn_on
+          data:
+            brightness_step_pct: -10
+            transition: 1
+          target: !input 'target_light'
+        - delay: '1'
+  - conditions: '{{ command == ''move_with_on_off'' }}'
+    sequence:
+    - repeat:
+        until: '{{ command == ''stop'' }}'
+        sequence:
+        - service: light.turn_on
+          data:
+            brightness_step_pct: 10
+            transition: 1
+          target: !input 'target_light'
+        - delay: '1'
+  - conditions:
+    - '{{ command == ''press'' }}'
+    - '{{ dataargs[0] == 257 }}'
+    sequence: !input 'button_left'
+  - conditions:
+    - '{{ command == ''press'' }}'
+    - '{{ dataargs[0] == 256 }}'
+    sequence: !input 'button_right'
+  - conditions:
+    - '{{ command == ''hold'' }}'
+    - '{{ dataargs[0] == 3329 }}'
+    sequence:
+    - repeat:
+        until: '{{ command == ''release'' }}'
+        sequence: !input 'button_left_hold'
+  - conditions:
+    - '{{ command == ''hold'' }}'
+    - '{{ dataargs[0] == 3328 }}'
+    sequence:
+    - repeat:
+        until: '{{ command == ''release'' }}'
+        sequence: !input 'button_right_hold'
+mode: restart
+max_exceeded: silent
